@@ -69,7 +69,6 @@ init_window(
 		printf("Window could not be created! SDL_Error %s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
 	}
-
 #if !__EMSCRIPTEN__
 	printf("SDL_VERSION...\n");
 	SDL_VERSION(&state->wmi.version);
@@ -91,12 +90,14 @@ init_window(
 	bgfx_platform_data_t pd;
 	memset(&pd, 0, sizeof(bgfx_platform_data_t));
 
+#if !__EMSCRIPTEN__
 	// x11
-	//pd.ndt = state->wmi.info.x11.display;
-	//pd.nwh = (void*)(uintptr_t)state->wmi.info.x11.window;
-
+	pd.ndt = state->wmi.info.x11.display;
+	pd.nwh = (void*)(uintptr_t)state->wmi.info.x11.window;
+#else
 	// web
 	pd.nwh = (void*)"#canvas";
+#endif
 
 	bgfx_init_t init = {0};
 	bgfx_init_ctor(&init);
@@ -130,8 +131,38 @@ init_window(
 	state->index_buffer_handle = bgfx_create_dynamic_index_buffer((RODEO__MAX_VERTEX_SIZE / 4) * 6, BGFX_BUFFER_NONE);
 
 	// load shaders
-	state->vertex_shader = _Rodeo__load_shader("shaders/simple.vertex.bin");
-	state->fragment_shader = _Rodeo__load_shader("shaders/simple.fragment.bin");
+	const char* shader_path = "???";
+	switch(bgfx_get_renderer_type()) {
+        case BGFX_RENDERER_TYPE_NOOP:
+			printf("Noop renderer error");
+			exit(EXIT_FAILURE);
+        case BGFX_RENDERER_TYPE_OPENGLES:
+			shader_path = "shaders/100_es/"; 
+			break;
+        case BGFX_RENDERER_TYPE_VULKAN:
+			shader_path = "shaders/spirv/";
+			break;
+		default:
+			printf("No shaders for selected renderer. Exiting...");
+			exit(EXIT_FAILURE);
+    }
+	const char* vertex_shader_filename = "simple.vertex.bin";
+	const char* fragment_shader_filename = "simple.fragment.bin";
+    size_t shader_length = strlen(shader_path);
+    size_t fragment_length = strlen(fragment_shader_filename);
+    size_t vertex_length = strlen(vertex_shader_filename);
+    char *fragment_path = (char *)malloc(shader_length + fragment_length);
+    char *vertex_path = (char *)malloc(shader_length + vertex_length);
+    memcpy(fragment_path, shader_path, shader_length);
+    memcpy(&fragment_path[shader_length], fragment_shader_filename, fragment_length);
+    memcpy(vertex_path, shader_path, shader_length);
+    memcpy(&vertex_path[shader_length], vertex_shader_filename, vertex_length);
+
+	fragment_path[shader_length + fragment_length] = 0;
+	vertex_path[shader_length + vertex_length] = 0;
+
+	state->vertex_shader = _Rodeo__load_shader(vertex_path);
+	state->fragment_shader = _Rodeo__load_shader(fragment_path);
 	state->program_shader = bgfx_create_program(
 		state->vertex_shader,
 		state->fragment_shader,
@@ -394,7 +425,7 @@ load_shader(const char* path)
 
 	if(!file)
 	{
-		printf("Error: shader file \"%s\" not found", path);
+		printf("Error: shader file \"%s\" not found\n", path);
 		return invalid;
 	}
 
